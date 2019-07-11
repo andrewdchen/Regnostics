@@ -25,7 +25,11 @@ ui <- fluidPage(
       # Output: Tabset w/ plot, summary, and table ----
       tabsetPanel(type = "tabs",
                   tabPanel("Summary", verbatimTextOutput("summary")),
-                  tabPanel("Influence", plotOutput("influence")),
+                  tabPanel("Influence", 
+                           fluidRow(
+                             column(12, plotOutput("leverage")),
+                             column(12, plotOutput("cooks"))
+                           )),
                   tabPanel("Table", DT::dataTableOutput("table"))
       )
     )
@@ -51,10 +55,22 @@ server <- function(input, output) {
     summary(rv()$model)
   })
   
-  output$influence <- renderPlot({
+  output$leverage <- renderPlot({
+    leverages <- influence(rv()$model)$hat
+    rowname <- rownames(rv()$table)
+    plot(leverages, main = 'Leverage')
+    abline(h = mean(leverages))
+    leverages.sorted <- sort(leverages, decreasing=T, index.return=T)
+    for(i in leverages.sorted$ix[1:2]) {
+      text(i, leverages[i]-0.02, rowname[i])
+    }
+  })
+  
+  output$cooks <- renderPlot({
     cooks <- cooks.distance(rv()$model)
     rowname <- rownames(rv()$table)
-    plot(cooks)
+    plot(cooks, main = 'Cooks Distance')
+    abline(h = mean(cooks))
     cooks.sorted <- sort(cooks, decreasing=T, index.return=T)
     for(i in cooks.sorted$ix[1:2]) {
       text(i, cooks[i]-0.02, rowname[i])
