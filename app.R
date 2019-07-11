@@ -25,6 +25,7 @@ ui <- fluidPage(
       # Output: Tabset w/ plot, summary, and table ----
       tabsetPanel(type = "tabs",
                   tabPanel("Summary", verbatimTextOutput("summary")),
+                  tabPanel("Influence", plotOutput("influence")),
                   tabPanel("Table", DT::dataTableOutput("table"))
       )
     )
@@ -48,6 +49,16 @@ server <- function(input, output) {
   
   output$summary <- renderPrint({
     summary(rv()$model)
+  })
+  
+  output$influence <- renderPlot({
+    cooks <- cooks.distance(rv()$model)
+    rowname <- rownames(rv()$table)
+    plot(cooks)
+    cooks.sorted <- sort(cooks, decreasing=T, index.return=T)
+    for(i in cooks.sorted$ix[1:2]) {
+      text(i, cooks[i]-0.02, rowname[i])
+    }
   })
   
   output$table <- DT::renderDataTable({
