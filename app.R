@@ -1,6 +1,8 @@
 library(shiny)
 library(dplyr)
 library(faraway)
+library(car)
+library(leaps)
 
 ui <- fluidPage(
   
@@ -25,11 +27,26 @@ ui <- fluidPage(
       # Output: Tabset w/ plot, summary, and table ----
       tabsetPanel(type = "tabs",
                   tabPanel("Summary", verbatimTextOutput("summary")),
-                  tabPanel("Influence", 
+                  tabPanel("Standard Diagnostics",
                            fluidRow(
-                             column(12, plotOutput("leverage")),
-                             column(12, plotOutput("cooks"))
+                             column(width = 12, plotOutput("standardplot"))
+                           )
+                           ),
+                  tabPanel("Outlier Detection",
+                           withMathJax(),
+                           sprintf("Cook's distance measures how the fitted values change when the ith observation is deleted, in essence how much \\(\\hat{\\beta}\\) and \\(\\hat{\\beta}_{[i]}\\) differ. 
+                                    If observation i has a large \\(C_i\\) it is probably an outlier."),
+                           sprintf("$$C_i = \\frac{\\left(\\hat \\beta - \\hat \\beta_{[i]}\\right)^T\\left(X^TX\\right)\\left(\\hat \\beta - \\hat \\beta_{[i]}\\right)}{\\left(p+1\\right)\\hat{\\sigma}^2} = \\frac{r_i^2}{p+1} \\frac{h_i}{1−h_i}$$"),
+                           fluidRow(
+                             column(width = 12, plotOutput("leverage")),
+                             column(width = 12, plotOutput("cooks"))
                            )),
+                  tabPanel("Nonlinearity",
+                           fluidRow(
+                             column(width = 12, plotOutput("partialres"))
+                           )
+                           ),
+                  tabPanel("Feature Selection", verbatimTextOutput("features")),
                   tabPanel("Table", DT::dataTableOutput("table"))
       )
     )
@@ -42,9 +59,11 @@ server <- function(input, output) {
   rv <- reactive({
     columns <- c("sr", input$predictors)
     filtered <- savings %>% select(columns)
+    # If no predictors are specified, regress on the intercept term alone.
     if(length(columns) == 1) {
       model <- lm(data = filtered, sr ~ 1)
     }
+    # Else regress on every predictor.
     else {
       model <- lm(data = filtered, sr ~ .)
     }
@@ -53,6 +72,11 @@ server <- function(input, output) {
   
   output$summary <- renderPrint({
     summary(rv()$model)
+  })
+  
+  output$standardplot <- renderPlot({
+    par(mfrow=c(2,2))
+    plot(rv()$model)
   })
   
   output$leverage <- renderPlot({
@@ -75,6 +99,24 @@ server <- function(input, output) {
     for(i in cooks.sorted$ix[1:2]) {
       text(i, cooks[i]-0.02, rowname[i])
     }
+  })
+  
+  output$partialres <- renderPlot({
+    par(mfrow = c(2,2))
+    crPlot(rv()$model, variable = "pop15")
+    crPlot(rv()$model, variable = "pop75")
+    crPlot(rv()$model, variable = "dpi")
+    crPlot(rv()$model, variable = "ddpi")
+  })
+  
+  #Feature selection only applicable when there is more than one feature.
+  b <- regsubsets(sr ~ ., data = savings, nvmax = 4, nbest = 1, method = "exhaustive")
+  rs <- summary(b)
+  best_bic_index <- which.min(rs$bic)
+  selected <- rs$which[best_bic_index,]
+  
+  output$features <- renderPrint({
+    selected
   })
   
   output$table <- DT::renderDataTable({
